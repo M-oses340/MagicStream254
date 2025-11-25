@@ -8,10 +8,13 @@ import (
 	"github.com/M-oses340/MagicStream254/server/MagicStreamMoviesServer/database"
 	"github.com/M-oses340/MagicStream254/server/MagicStreamMoviesServer/models"
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 var movieCollection = database.OpenCollection("movies")
+var validate = validator.New()
 
 func GetMovies(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -53,4 +56,28 @@ func GetMovie(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"movie": movie})
+}
+func AddMovie(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var movie models.Movie
+
+	// Bind JSON body
+	if err := c.BindJSON(&movie); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Assign new ObjectID
+	movie.ID = primitive.NewObjectID()
+
+	// Insert into MongoDB
+	_, err := movieCollection.InsertOne(ctx, movie)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to insert movie"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Movie added successfully", "movie": movie})
 }

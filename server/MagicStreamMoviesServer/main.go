@@ -18,6 +18,7 @@ func main() {
 	// Movies route
 	router.GET("/movies", controller.GetMovies)
 	router.GET("/movie/:imdb_id", controller.GetMovie)
+	router.POST("/addmovie", controller.AddMovie)
 
 	// Start server
 	router.Run(":8080")
