@@ -58,7 +58,7 @@ func GetMovie(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"movie": movie})
 }
 func AddMovie(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
 
 	var movie models.Movie
