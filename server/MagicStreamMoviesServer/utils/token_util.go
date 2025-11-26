@@ -23,18 +23,13 @@ type SignedDetails struct {
 var SECRET_KEY string = os.Getenv("SECRET_KEY")
 var SECRET_REFRESH_KEY string = os.Getenv("SECRET_REFRESH_KEY")
 
-// FIX: Initialize collection properly
+// Initialize MongoDB users collection
 var userCollection *mongo.Collection = database.OpenCollection("users")
 
-// Generate access + refresh tokens
+// GenerateAllTokens creates access and refresh tokens for a user
 func GenerateAllTokens(email, firstName, lastName, role, userId string) (string, string, error) {
-
-	// DEBUG PRINTS — TEMPORARY
-	println("=== DEBUG: TOKEN GENERATION ===")
-	println("ACCESS SECRET: ", SECRET_KEY)
-	println("REFRESH SECRET: ", SECRET_REFRESH_KEY)
-
-	claims := &SignedDetails{
+	// Access token
+	accessClaims := &SignedDetails{
 		Email:     email,
 		FirstName: firstName,
 		LastName:  lastName,
@@ -43,18 +38,17 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "MagicStream",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)), // 24h
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 		},
 	}
 
-	println("ACCESS EXP (unix): ", claims.ExpiresAt.Unix())
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, err := token.SignedString([]byte(SECRET_KEY))
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
+	signedAccessToken, err := accessToken.SignedString([]byte(SECRET_KEY))
 	if err != nil {
 		return "", "", err
 	}
 
+	// Refresh token
 	refreshClaims := &SignedDetails{
 		Email:     email,
 		FirstName: firstName,
@@ -64,11 +58,9 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "MagicStream",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)), // 7 days
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 		},
 	}
-
-	println("REFRESH EXP (unix): ", refreshClaims.ExpiresAt.Unix())
 
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
 	signedRefreshToken, err := refreshToken.SignedString([]byte(SECRET_REFRESH_KEY))
@@ -76,12 +68,10 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 		return "", "", err
 	}
 
-	println("=== END DEBUG ===")
-
-	return signedToken, signedRefreshToken, nil
+	return signedAccessToken, signedRefreshToken, nil
 }
 
-// Update tokens in DB
+// UpdateAllTokens updates the user's access and refresh tokens in the database
 func UpdateAllTokens(userId, token, refreshToken string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
