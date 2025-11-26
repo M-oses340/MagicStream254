@@ -25,26 +25,40 @@ func HashPassword(password string) (string, error) {
 	return string(HashPassword), nil
 
 }
-
 func RegisterUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var user models.User
 
-		if err := c.ShouldBind(&user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data"})
+		// Bind JSON correctly
+		if err := c.ShouldBindJSON(&user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid input data",
+				"details": err.Error(),
+			})
 			return
 		}
+
+		// Validate struct
 		validate := validator.New()
 		if err := validate.Struct(user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Validation failed", "details": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Validation failed",
+				"details": err.Error(),
+			})
 			return
 		}
+
+		// Hash password
 		hashedPassword, err := HashPassword(user.Password)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+			return
 		}
-		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 		defer cancel()
+
+		// Check for existing user
 		count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check existing user"})
@@ -54,17 +68,19 @@ func RegisterUser() gin.HandlerFunc {
 			c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
 			return
 		}
+
 		user.ID = primitive.NewObjectID()
 		user.UserID = user.ID.Hex()
 		user.Password = hashedPassword
 		user.CreatedAt = time.Now()
 		user.UpdatedAt = time.Now()
+
 		result, err := userCollection.InsertOne(ctx, user)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
 		}
-		c.JSON(http.StatusCreated, gin.H{"user": result})
 
+		c.JSON(http.StatusCreated, gin.H{"user": result})
 	}
 }
