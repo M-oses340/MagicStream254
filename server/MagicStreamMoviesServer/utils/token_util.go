@@ -29,6 +29,11 @@ var userCollection *mongo.Collection = database.OpenCollection("users")
 // Generate access + refresh tokens
 func GenerateAllTokens(email, firstName, lastName, role, userId string) (string, string, error) {
 
+	// DEBUG PRINTS — TEMPORARY
+	println("=== DEBUG: TOKEN GENERATION ===")
+	println("ACCESS SECRET: ", SECRET_KEY)
+	println("REFRESH SECRET: ", SECRET_REFRESH_KEY)
+
 	claims := &SignedDetails{
 		Email:     email,
 		FirstName: firstName,
@@ -38,9 +43,11 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "MagicStream",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)), // 24h
 		},
 	}
+
+	println("ACCESS EXP (unix): ", claims.ExpiresAt.Unix())
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, err := token.SignedString([]byte(SECRET_KEY))
@@ -61,11 +68,15 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 		},
 	}
 
+	println("REFRESH EXP (unix): ", refreshClaims.ExpiresAt.Unix())
+
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
 	signedRefreshToken, err := refreshToken.SignedString([]byte(SECRET_REFRESH_KEY))
 	if err != nil {
 		return "", "", err
 	}
+
+	println("=== END DEBUG ===")
 
 	return signedToken, signedRefreshToken, nil
 }
