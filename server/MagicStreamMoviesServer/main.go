@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	controller "github.com/M-oses340/MagicStream254/server/MagicStreamMoviesServer/controllers"
 	"github.com/gin-gonic/gin"
 )
@@ -23,5 +25,9 @@ func main() {
 	router.POST("/login", controller.LoginUser())
 
 	// Start server
-	router.Run(":8080")
+
+	if err := router.Run(":8080"); err != nil {
+		fmt.Println("Failed to start server", err)
+	}
+
 }
