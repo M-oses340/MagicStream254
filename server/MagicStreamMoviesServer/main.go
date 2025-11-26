@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	controller "github.com/M-oses340/MagicStream254/server/MagicStreamMoviesServer/controllers"
+	"github.com/M-oses340/MagicStream254/server/MagicStreamMoviesServer/routes"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,13 +16,8 @@ func main() {
 			"message": "MagicStream Movies API is running 🚀",
 		})
 	})
-
-	// Movies route
-	router.GET("/movies", controller.GetMovies)
-	router.GET("/movie/:imdb_id", controller.GetMovie)
-	router.POST("/addmovie", controller.AddMovie)
-	router.POST("/register", controller.RegisterUser())
-	router.POST("/login", controller.LoginUser())
+	routes.SetupUnProtectedRoutes(router)
+	routes.SetupProtectedRoutes(router)
 
 	// Start server
 
