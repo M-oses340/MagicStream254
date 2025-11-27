@@ -11,6 +11,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var movieCollection = database.OpenCollection("movies")
@@ -80,4 +81,60 @@ func AddMovie(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Movie added successfully", "movie": movie})
+}
+func AdminReviewUpdate() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		movieId := c.Param("imdb_id")
+		if movieId == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Movie id is required"})
+			return
+		}
+
+		// Expected body
+		var req struct {
+			AdminReview string `json:"admin_review"`
+			RankingName string `json:"ranking_name"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		updateFields := bson.M{}
+		if req.AdminReview != "" {
+			updateFields["admin_review"] = req.AdminReview
+		}
+		if req.RankingName != "" {
+			updateFields["ranking.ranking_name"] = req.RankingName
+		}
+
+		if len(updateFields) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
+			return
+		}
+
+		update := bson.M{"$set": updateFields}
+
+		result := movieCollection.FindOneAndUpdate(
+			ctx,
+			bson.M{"imdb_id": movieId},
+			update,
+			options.FindOneAndUpdate().SetReturnDocument(options.After),
+		)
+
+		var updatedMovie models.Movie
+		if err := result.Decode(&updatedMovie); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Movie not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Movie updated successfully",
+			"movie":   updatedMovie,
+		})
+	}
 }
