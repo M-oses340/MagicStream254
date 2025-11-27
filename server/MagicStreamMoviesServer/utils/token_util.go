@@ -126,3 +126,33 @@ func ValidateToken(tokenString string) (*SignedDetails, error) {
 	return claims, nil
 
 }
+
+// GetRoleFromContext extracts the user's role from the Gin context
+func GetRoleFromContext(c *gin.Context) (string, error) {
+	tokenString, err := GetAccessToken(c)
+	if err != nil {
+		return "", err
+	}
+
+	claims, err := ValidateToken(tokenString)
+	if err != nil {
+		return "", err
+	}
+
+	return claims.Role, nil
+}
+
+// GetUserIdFromContext extracts the user's ID from the Gin context
+func GetUserIdFromContext(c *gin.Context) (string, error) {
+	tokenString, err := GetAccessToken(c)
+	if err != nil {
+		return "", err
+	}
+
+	claims, err := ValidateToken(tokenString)
+	if err != nil {
+		return "", err
+	}
+
+	return claims.UserId, nil
+}
