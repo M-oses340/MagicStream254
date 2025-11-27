@@ -1,3 +1,5 @@
-server/MagicStreamMoviesServer/.env
-server/MagicStreamMoviesServer/.env
-server/MagicStreamMoviesServer/.env
+# Go binaries
+*.tar.gz
+
+# Env files
+.env
