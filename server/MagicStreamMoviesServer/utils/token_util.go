@@ -25,12 +25,7 @@ type SignedDetails struct {
 var SECRET_KEY string = os.Getenv("SECRET_KEY")
 var SECRET_REFRESH_KEY string = os.Getenv("SECRET_REFRESH_KEY")
 
-// Initialize MongoDB users collection
-var userCollection *mongo.Collection = database.OpenCollection("users")
-
-// GenerateAllTokens creates access and refresh tokens for a user
 func GenerateAllTokens(email, firstName, lastName, role, userId string) (string, string, error) {
-	// Access token
 	accessClaims := &SignedDetails{
 		Email:     email,
 		FirstName: firstName,
@@ -50,7 +45,6 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 		return "", "", err
 	}
 
-	// Refresh token
 	refreshClaims := &SignedDetails{
 		Email:     email,
 		FirstName: firstName,
@@ -73,8 +67,9 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 	return signedAccessToken, signedRefreshToken, nil
 }
 
-// UpdateAllTokens updates the user's access and refresh tokens in the database
-func UpdateAllTokens(userId, token, refreshToken string) error {
+func UpdateAllTokens(userId, token, refreshToken string, client *mongo.Client) error {
+	userCollection := database.OpenCollection("users", client)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
 
@@ -93,18 +88,20 @@ func UpdateAllTokens(userId, token, refreshToken string) error {
 
 	return nil
 }
+
 func GetAccessToken(c *gin.Context) (string, error) {
 	authHeader := c.Request.Header.Get("Authorization")
 	if authHeader == "" {
 		return "", errors.New("Authorization header is empty")
-
 	}
+
 	tokenString := authHeader[len("Bearer "):]
 	if tokenString == "" {
 		return "", errors.New("Bearer token is required")
 	}
 	return tokenString, nil
 }
+
 func ValidateToken(tokenString string) (*SignedDetails, error) {
 	claims := &SignedDetails{}
 
@@ -116,7 +113,7 @@ func ValidateToken(tokenString string) (*SignedDetails, error) {
 	}
 
 	if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-		return nil, err
+		return nil, errors.New("unexpected signing method")
 	}
 
 	if claims.ExpiresAt.Time.Before(time.Now()) {
@@ -124,10 +121,8 @@ func ValidateToken(tokenString string) (*SignedDetails, error) {
 	}
 
 	return claims, nil
-
 }
 
-// GetRoleFromContext extracts the user's role from the Gin context
 func GetRoleFromContext(c *gin.Context) (string, error) {
 	tokenString, err := GetAccessToken(c)
 	if err != nil {
@@ -142,7 +137,6 @@ func GetRoleFromContext(c *gin.Context) (string, error) {
 	return claims.Role, nil
 }
 
-// GetUserIdFromContext extracts the user's ID from the Gin context
 func GetUserIdFromContext(c *gin.Context) (string, error) {
 	tokenString, err := GetAccessToken(c)
 	if err != nil {
@@ -155,4 +149,26 @@ func GetUserIdFromContext(c *gin.Context) (string, error) {
 	}
 
 	return claims.UserId, nil
+}
+
+// ValidateRefreshToken parses and validates a refresh JWT
+func ValidateRefreshToken(tokenString string) (*SignedDetails, error) {
+	claims := &SignedDetails{}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(SECRET_REFRESH_KEY), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		return nil, errors.New("unexpected signing method")
+	}
+
+	if claims.ExpiresAt.Time.Before(time.Now()) {
+		return nil, errors.New("refresh token has expired")
+	}
+
+	return claims, nil
 }
