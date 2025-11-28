@@ -235,61 +235,47 @@ func GetRecommendedMovies() gin.HandlerFunc {
 		// panic recovery so we don't bring down the server
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("❌ Panic recovered in GetRecommendedMovies: %v\n", r)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			}
 		}()
 
-		log.Println("➡️  [GetRecommendedMovies] start")
-
 		// get user id from context
 		userId, err := utils.GetUserIdFromContext(c)
 		if err != nil {
-			log.Printf("⚠️  [GetRecommendedMovies] GetUserIdFromContext error: %v\n", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User Id not found in context"})
 			return
 		}
-		log.Printf("ℹ️  [GetRecommendedMovies] userId: %s\n", userId)
 
 		// get user's favourite genres
 		favourite_genres, err := GetUsersFavouriteGenres(userId, c)
 		if err != nil {
-			log.Printf("⚠️  [GetRecommendedMovies] GetUsersFavouriteGenres error: %v\n", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		log.Printf("ℹ️  [GetRecommendedMovies] favourite_genres: %#v\n", favourite_genres)
 
-		// ✅ FIX: If user has no favourite genres, return empty list to avoid MongoDB $in nil error
+		// if no favourite genres, return empty list
 		if len(favourite_genres) == 0 {
-			log.Println("ℹ️  [GetRecommendedMovies] favourite_genres empty → returning empty list")
 			c.JSON(http.StatusOK, []models.Movie{})
 			return
 		}
 
 		// load env (optional)
-		if err := godotenv.Load(".env"); err != nil {
-			log.Println("ℹ️  [GetRecommendedMovies] .env file not found (continuing)")
-		}
+		_ = godotenv.Load(".env")
 
 		// recommended movie limit
 		recommendedMovieLimit := int64(5)
 		if val := os.Getenv("RECOMMENDED_MOVIE_LIMIT"); val != "" {
 			if parsed, perr := strconv.ParseInt(val, 10, 64); perr == nil {
 				recommendedMovieLimit = parsed
-			} else {
-				log.Printf("⚠️  [GetRecommendedMovies] invalid RECOMMENDED_MOVIE_LIMIT=%q, using default %d (parse error: %v)\n", val, recommendedMovieLimit, perr)
 			}
 		}
-		log.Printf("ℹ️  [GetRecommendedMovies] recommendedMovieLimit: %d\n", recommendedMovieLimit)
 
 		// build find options
 		findOptions := options.Find()
 		findOptions.SetSort(bson.D{{Key: "ranking.ranking_value", Value: 1}})
 		findOptions.SetLimit(recommendedMovieLimit)
-		log.Printf("ℹ️  [GetRecommendedMovies] findOptions: sort=ranking.ranking_value asc, limit=%d\n", recommendedMovieLimit)
 
-		// build filter using $elemMatch to match array of genre objects
+		// build filter
 		filter := bson.M{
 			"genre": bson.M{
 				"$elemMatch": bson.M{
@@ -297,40 +283,26 @@ func GetRecommendedMovies() gin.HandlerFunc {
 				},
 			},
 		}
-		log.Printf("ℹ️  [GetRecommendedMovies] Mongo filter: %#v\n", filter)
 
-		// query the DB with a context timeout
+		// query the DB
 		movieCollection := database.OpenCollection("movies")
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 		defer cancel()
 
 		cursor, err := movieCollection.Find(ctx, filter, findOptions)
 		if err != nil {
-			log.Printf("❌ [GetRecommendedMovies] movieCollection.Find error: %v\n", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching recommended movies"})
 			return
 		}
-		defer func() {
-			if err := cursor.Close(ctx); err != nil {
-				log.Printf("⚠️  [GetRecommendedMovies] cursor.Close error: %v\n", err)
-			}
-		}()
+		defer cursor.Close(ctx)
 
 		var recommendedMovies []models.Movie
 		if err := cursor.All(ctx, &recommendedMovies); err != nil {
-			log.Printf("❌ [GetRecommendedMovies] cursor.All error: %v\n", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		if len(recommendedMovies) == 0 {
-			log.Println("ℹ️  [GetRecommendedMovies] no recommended movies found")
-		} else {
-			log.Printf("✅ [GetRecommendedMovies] found %d recommended movies\n", len(recommendedMovies))
-		}
-
 		c.JSON(http.StatusOK, recommendedMovies)
-		log.Println("➡️  [GetRecommendedMovies] end")
 	}
 }
 
