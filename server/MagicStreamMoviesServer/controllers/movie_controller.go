@@ -232,49 +232,105 @@ func GetRankings(c *gin.Context) ([]models.Ranking, error) {
 
 func GetRecommendedMovies() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// panic recovery so we don't bring down the server
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("❌ Panic recovered in GetRecommendedMovies: %v\n", r)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			}
+		}()
+
+		log.Println("➡️  [GetRecommendedMovies] start")
+
+		// get user id from context
 		userId, err := utils.GetUserIdFromContext(c)
 		if err != nil {
+			log.Printf("⚠️  [GetRecommendedMovies] GetUserIdFromContext error: %v\n", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User Id not found in context"})
 			return
 		}
+		log.Printf("ℹ️  [GetRecommendedMovies] userId: %s\n", userId)
 
+		// get user's favourite genres
 		favourite_genres, err := GetUsersFavouriteGenres(userId, c)
 		if err != nil {
+			log.Printf("⚠️  [GetRecommendedMovies] GetUsersFavouriteGenres error: %v\n", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		log.Printf("ℹ️  [GetRecommendedMovies] favourite_genres: %#v\n", favourite_genres)
 
-		err = godotenv.Load(".env")
-		if err != nil {
-			log.Println("Warning: .env file not found")
+		// ✅ FIX: If user has no favourite genres, return empty list to avoid MongoDB $in nil error
+		if len(favourite_genres) == 0 {
+			log.Println("ℹ️  [GetRecommendedMovies] favourite_genres empty → returning empty list")
+			c.JSON(http.StatusOK, []models.Movie{})
+			return
 		}
 
+		// load env (optional)
+		if err := godotenv.Load(".env"); err != nil {
+			log.Println("ℹ️  [GetRecommendedMovies] .env file not found (continuing)")
+		}
+
+		// recommended movie limit
 		recommendedMovieLimit := int64(5)
 		if val := os.Getenv("RECOMMENDED_MOVIE_LIMIT"); val != "" {
-			recommendedMovieLimit, _ = strconv.ParseInt(val, 10, 64)
+			if parsed, perr := strconv.ParseInt(val, 10, 64); perr == nil {
+				recommendedMovieLimit = parsed
+			} else {
+				log.Printf("⚠️  [GetRecommendedMovies] invalid RECOMMENDED_MOVIE_LIMIT=%q, using default %d (parse error: %v)\n", val, recommendedMovieLimit, perr)
+			}
 		}
+		log.Printf("ℹ️  [GetRecommendedMovies] recommendedMovieLimit: %d\n", recommendedMovieLimit)
 
+		// build find options
 		findOptions := options.Find()
 		findOptions.SetSort(bson.D{{Key: "ranking.ranking_value", Value: 1}})
 		findOptions.SetLimit(recommendedMovieLimit)
+		log.Printf("ℹ️  [GetRecommendedMovies] findOptions: sort=ranking.ranking_value asc, limit=%d\n", recommendedMovieLimit)
 
-		filter := bson.D{{Key: "genre.genre_name", Value: bson.D{{Key: "$in", Value: favourite_genres}}}}
+		// build filter using $elemMatch to match array of genre objects
+		filter := bson.M{
+			"genre": bson.M{
+				"$elemMatch": bson.M{
+					"genre_name": bson.M{"$in": favourite_genres},
+				},
+			},
+		}
+		log.Printf("ℹ️  [GetRecommendedMovies] Mongo filter: %#v\n", filter)
 
+		// query the DB with a context timeout
 		movieCollection := database.OpenCollection("movies")
-		cursor, err := movieCollection.Find(c, filter, findOptions)
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		cursor, err := movieCollection.Find(ctx, filter, findOptions)
 		if err != nil {
+			log.Printf("❌ [GetRecommendedMovies] movieCollection.Find error: %v\n", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching recommended movies"})
 			return
 		}
-		defer cursor.Close(c)
+		defer func() {
+			if err := cursor.Close(ctx); err != nil {
+				log.Printf("⚠️  [GetRecommendedMovies] cursor.Close error: %v\n", err)
+			}
+		}()
 
 		var recommendedMovies []models.Movie
-		if err := cursor.All(c, &recommendedMovies); err != nil {
+		if err := cursor.All(ctx, &recommendedMovies); err != nil {
+			log.Printf("❌ [GetRecommendedMovies] cursor.All error: %v\n", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
+		if len(recommendedMovies) == 0 {
+			log.Println("ℹ️  [GetRecommendedMovies] no recommended movies found")
+		} else {
+			log.Printf("✅ [GetRecommendedMovies] found %d recommended movies\n", len(recommendedMovies))
+		}
+
 		c.JSON(http.StatusOK, recommendedMovies)
+		log.Println("➡️  [GetRecommendedMovies] end")
 	}
 }
 
@@ -288,29 +344,44 @@ func GetUsersFavouriteGenres(userId string, c *gin.Context) ([]string, error) {
 	err := userCollection.FindOne(c, bson.D{{Key: "user_id", Value: userId}}, opts).Decode(&result)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
+			log.Printf("ℹ️ [GetUsersFavouriteGenres] no user document found for userId=%s\n", userId)
 			return []string{}, nil
 		}
+		log.Printf("❌ [GetUsersFavouriteGenres] FindOne error: %v\n", err)
 		return nil, err
 	}
 
-	favGenresArray, ok := result["favourite_genres"].(bson.A)
-	if !ok {
-		return []string{}, errors.New("unable to retrieve favourite genres for user")
+	rawGenres, ok := result["favourite_genres"]
+	if !ok || rawGenres == nil {
+		log.Printf("ℹ️ [GetUsersFavouriteGenres] userId=%s has no favourite genres\n", userId)
+		return []string{}, nil
 	}
 
 	var genreNames []string
-	for _, item := range favGenresArray {
-		if genreMap, ok := item.(bson.D); ok {
-			for _, elem := range genreMap {
-				if elem.Key == "genre_name" {
-					if name, ok := elem.Value.(string); ok {
-						genreNames = append(genreNames, name)
+
+	switch arr := rawGenres.(type) {
+	case bson.A:
+		for _, item := range arr {
+			if genreMap, ok := item.(bson.M); ok {
+				if name, ok := genreMap["genre_name"].(string); ok {
+					genreNames = append(genreNames, name)
+				}
+			} else if genreMap, ok := item.(bson.D); ok {
+				for _, elem := range genreMap {
+					if elem.Key == "genre_name" {
+						if name, ok := elem.Value.(string); ok {
+							genreNames = append(genreNames, name)
+						}
 					}
 				}
 			}
 		}
+	default:
+		log.Printf("⚠️ [GetUsersFavouriteGenres] unexpected type for favourite_genres: %T\n", rawGenres)
+		return []string{}, errors.New("unexpected format for favourite_genres")
 	}
 
+	log.Printf("ℹ️ [GetUsersFavouriteGenres] userId=%s favourite_genres=%#v\n", userId, genreNames)
 	return genreNames, nil
 }
 
