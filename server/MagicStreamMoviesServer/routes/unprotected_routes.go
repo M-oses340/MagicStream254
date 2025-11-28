@@ -10,4 +10,5 @@ func SetupUnProtectedRoutes(router *gin.Engine) {
 	router.POST("/register", controller.RegisterUser())
 	router.POST("/login", controller.LoginUser())
 	router.GET("/movies", controller.GetMovies())
+	router.PATCH("/updatereview/:imdb_id", controller.AdminReviewUpdate())
 }
