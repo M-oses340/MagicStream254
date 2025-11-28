@@ -24,7 +24,7 @@ import (
 
 var validate = validator.New()
 
-func GetMovies() gin.HandlerFunc {
+func GetMovies(*mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c, 100*time.Second)
 		defer cancel()
@@ -48,7 +48,7 @@ func GetMovies() gin.HandlerFunc {
 	}
 }
 
-func GetMovie() gin.HandlerFunc {
+func GetMovie(*mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c, 100*time.Second)
 		defer cancel()
@@ -72,7 +72,7 @@ func GetMovie() gin.HandlerFunc {
 	}
 }
 
-func AddMovie() gin.HandlerFunc {
+func AddMovie(*mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c, 100*time.Second)
 		defer cancel()
@@ -99,7 +99,7 @@ func AddMovie() gin.HandlerFunc {
 	}
 }
 
-func AdminReviewUpdate() gin.HandlerFunc {
+func AdminReviewUpdate(*mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -243,7 +243,7 @@ func GetRankings() ([]models.Ranking, error) {
 	return rankings, nil
 }
 
-func GetRecommendedMovies() gin.HandlerFunc {
+func GetRecommendedMovies(*mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// panic recovery so we don't bring down the server
 		defer func() {
@@ -370,7 +370,7 @@ func GetUsersFavouriteGenres(userId string, c *gin.Context) ([]string, error) {
 	return genreNames, nil
 }
 
-func GetGenres() gin.HandlerFunc {
+func GetGenres(*mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		genreCollection := database.OpenCollection("genres")
 

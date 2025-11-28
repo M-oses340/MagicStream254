@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 
+	"github.com/M-oses340/MagicStream254/server/MagicStreamMoviesServer/database"
 	"github.com/M-oses340/MagicStream254/server/MagicStreamMoviesServer/routes"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 func main() {
@@ -16,8 +18,9 @@ func main() {
 			"message": "MagicStream Movies API is running 🚀",
 		})
 	})
-	routes.SetupUnProtectedRoutes(router)
-	routes.SetupProtectedRoutes(router)
+	var client *mongo.Client = database.Connect()
+	routes.SetupUnProtectedRoutes(router, client)
+	routes.SetupProtectedRoutes(router, client)
 
 	// Start server
 
