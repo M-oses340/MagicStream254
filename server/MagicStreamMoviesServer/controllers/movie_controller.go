@@ -101,13 +101,14 @@ func AddMovie() gin.HandlerFunc {
 
 func AdminReviewUpdate() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, err := utils.GetRoleFromContext(c)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Role not found in context"})
-			return
-		}
+		defer func() {
+			if r := recover(); r != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			}
+		}()
 
-		if role != "ADMIN" {
+		role, err := utils.GetRoleFromContext(c)
+		if err != nil || role != "ADMIN" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User must be part of the ADMIN role"})
 			return
 		}
@@ -121,19 +122,15 @@ func AdminReviewUpdate() gin.HandlerFunc {
 		var req struct {
 			AdminReview string `json:"admin_review"`
 		}
-		var resp struct {
-			RankingName string `json:"ranking_name"`
-			AdminReview string `json:"admin_review"`
-		}
-
-		if err := c.ShouldBind(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.AdminReview) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Admin review cannot be empty"})
 			return
 		}
 
-		sentiment, rankVal, err := GetReviewRanking(req.AdminReview, c)
+		// Get sentiment and ranking
+		sentiment, rankVal, err := GetReviewRanking(req.AdminReview)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting review ranking"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -149,9 +146,12 @@ func AdminReviewUpdate() gin.HandlerFunc {
 		}
 
 		movieCollection := database.OpenCollection("movies")
-		result, err := movieCollection.UpdateOne(c, filter, update)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		result, err := movieCollection.UpdateOne(ctx, filter, update)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating movie"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update movie"})
 			return
 		}
 		if result.MatchedCount == 0 {
@@ -159,71 +159,84 @@ func AdminReviewUpdate() gin.HandlerFunc {
 			return
 		}
 
-		resp.RankingName = sentiment
-		resp.AdminReview = req.AdminReview
-		c.JSON(http.StatusOK, resp)
+		c.JSON(http.StatusOK, gin.H{
+			"ranking_name": sentiment,
+			"admin_review": req.AdminReview,
+		})
 	}
 }
 
-func GetReviewRanking(admin_review string, c *gin.Context) (string, int, error) {
-	rankings, err := GetRankings(c)
+func GetReviewRanking(adminReview string) (string, int, error) {
+	rankings, err := GetRankings()
 	if err != nil {
 		return "", 0, err
 	}
 
-	sentimentDelimited := ""
-	for _, ranking := range rankings {
-		if ranking.RankingValue != 999 {
-			sentimentDelimited += ranking.RankingName + ","
+	var sentiments []string
+	for _, r := range rankings {
+		if r.RankingValue != 999 {
+			sentiments = append(sentiments, r.RankingName)
 		}
 	}
-	sentimentDelimited = strings.TrimRight(sentimentDelimited, ",")
-
-	err = godotenv.Load(".env")
-	if err != nil {
-		log.Println("Warning: .env file not found")
+	if len(sentiments) == 0 {
+		return "", 0, errors.New("no valid rankings found")
 	}
 
-	OpenAiApiKey := os.Getenv("OPENAI_API_KEY")
-	if OpenAiApiKey == "" {
-		return "", 0, errors.New("could not read OPENAI_API_KEY")
+	if err := godotenv.Load(".env"); err != nil {
+		// Optional: ignore if env not found
 	}
 
-	llm, err := openai.New(openai.WithToken(OpenAiApiKey))
-	if err != nil {
-		return "", 0, err
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		return "", 0, errors.New("OPENAI_API_KEY not set")
 	}
 
 	basePromptTemplate := os.Getenv("BASE_PROMPT_TEMPLATE")
-	basePrompt := strings.Replace(basePromptTemplate, "{rankings}", sentimentDelimited, 1)
+	if basePromptTemplate == "" {
+		return "", 0, errors.New("BASE_PROMPT_TEMPLATE not set")
+	}
 
-	response, err := llm.Call(c, basePrompt+admin_review)
+	basePrompt := strings.Replace(basePromptTemplate, "{rankings}", strings.Join(sentiments, ","), 1)
+
+	llm, err := openai.New(openai.WithToken(apiKey))
+	if err != nil {
+		return "", 0, err
+	}
+
+	response, err := llm.Call(context.Background(), basePrompt+adminReview)
 	if err != nil {
 		return "", 0, err
 	}
 
 	rankVal := 0
-	for _, ranking := range rankings {
-		if ranking.RankingName == response {
-			rankVal = ranking.RankingValue
+	for _, r := range rankings {
+		if r.RankingName == response {
+			rankVal = r.RankingValue
 			break
 		}
 	}
 
+	// Fallback if AI response doesn't match any ranking
+	if rankVal == 0 {
+		return "Unknown", 0, nil
+	}
+
 	return response, rankVal, nil
 }
-
-func GetRankings(c *gin.Context) ([]models.Ranking, error) {
+func GetRankings() ([]models.Ranking, error) {
 	rankingCollection := database.OpenCollection("rankings")
 
-	cursor, err := rankingCollection.Find(c, bson.D{})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cursor, err := rankingCollection.Find(ctx, bson.D{})
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(c)
+	defer cursor.Close(ctx)
 
 	var rankings []models.Ranking
-	if err := cursor.All(c, &rankings); err != nil {
+	if err := cursor.All(ctx, &rankings); err != nil {
 		return nil, err
 	}
 
