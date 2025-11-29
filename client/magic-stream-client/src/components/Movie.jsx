@@ -5,6 +5,10 @@ const Movie = ({movie}) =>{
         <div className="col-md-4 mb-4" >
            <div className="card h-100 shadow-sm">
             <div style={{position: "relative"}}>
+                <img src={movie.poster_path} alt={movie.title}
+                   className=""
+                
+                />
 
             </div>
             <div className="card-body d-flex flex-column">
