@@ -16,3 +16,4 @@ const Movies = ({movies,message}) => {
         </div>
     )
 }
+export default Movies;
