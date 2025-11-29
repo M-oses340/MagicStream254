@@ -151,7 +151,6 @@ func GetUserIdFromContext(c *gin.Context) (string, error) {
 	return claims.UserId, nil
 }
 
-// ValidateRefreshToken parses and validates a refresh JWT
 func ValidateRefreshToken(tokenString string) (*SignedDetails, error) {
 	claims := &SignedDetails{}
 
