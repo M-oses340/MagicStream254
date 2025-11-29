@@ -6,7 +6,12 @@ const Movie = ({movie}) =>{
            <div className="card h-100 shadow-sm">
             <div style={{position: "relative"}}>
                 <img src={movie.poster_path} alt={movie.title}
-                   className=""
+                   className="card-img-top"
+                   style={{
+                    objectFit:"contain",
+                    height:"250px",
+                    width:"100%"
+                   }}
                 
                 />
 
