@@ -6,6 +6,7 @@ import {useNavigate, NavLink, Link} from 'react-router-dom'
 
 const Header = () => {
     const navigate = useNavigate();
+    const {auth} = useAuth();
 
     return(
         <Navbar bg="dark" variant='dark' expand="lg" sticky="top" className="shadow-sm" >
