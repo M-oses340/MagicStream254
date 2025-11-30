@@ -31,6 +31,36 @@ const Header = () => {
                             Recommended
                         </Nav.Link>
                     </Nav>
+                    <Nav className ="ms-auto align-items-center">
+                        {auth ? (
+                        <>
+                            <span className="me-3 text-light">
+                                Hello, <strong>{auth.first_name}</strong>
+                            </span>
+                            <Button variant="outline-light" size="sm" onClick={handleLogout}>
+                                Logout
+                            </Button>
+                        </>
+                        ):(
+                            <>
+                                <Button
+                                    variant="outline-info"
+                                    size="sm"
+                                    className="me-2"
+                                    onClick={() => navigate("/login")} 
+                                >
+                                    Login
+                                </Button>
+                                <Button
+                                    variant="info"
+                                    size="sm"
+                                    onClick={() => navigate("/register")}  
+                                >
+                                    Register
+                                </Button>                        
+                            </>
+                        )}
+                    </Nav>       
                 </Navbar.Collapse>
 
             </Container>
