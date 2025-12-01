@@ -16,7 +16,11 @@ function App() {
         <Route path="/" element={<Home />}></Route>
         <Route path="/register" element={<Register/>}></Route>
         <Route path="/login" element={<Login/>}></Route>
-        <Routes path="/" element={<RequiredAuth/>}></Routes>
+        <Route path="/" element={<RequiredAuth/>}>
+          <Route path="/recommended" element={<Recommended/>}></Route>
+          <Route path="/review/:imdb_id" element={<Review/>}></Route>
+          <Route path="/stream/:yt_id" element={<StreamMovie/>}></Route>
+        </Route>  
       </Routes>
     </>
   );
