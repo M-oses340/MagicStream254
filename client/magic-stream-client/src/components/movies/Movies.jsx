@@ -1,4 +1,5 @@
-import Movie from "../Movie";
+import Movie from "../movie/Movie.jsx";
+
 
 const Movies = ({movies,message}) => {
     return(
