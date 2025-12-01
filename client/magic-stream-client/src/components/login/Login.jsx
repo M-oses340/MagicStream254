@@ -9,7 +9,7 @@ import logo from '../../assets/MagicStreamLogo.png';
 
 const Login = () => {
       
-    const {setAuth} = useAuth();
+    const [auth,setAuth] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
 
@@ -19,6 +19,33 @@ const Login = () => {
     const navigate = useNavigate();
 
     const from = location.state?.from?.pathname || "/";
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);       
+
+        try {
+            const response = await axiosClient.post('/login', { email, password });
+            console.log(response.data);
+            if (response.data.error) {
+                setError(response.data.error);
+                return;
+            }
+           // console.log(response.data);
+            setAuth(response.data);
+            
+           localStorage.setItem('user', JSON.stringify(response.data));
+            // Handle successful login (e.g., store token, redirect)
+           //navigate(from, {replace: true});
+           //navigate('/');
+
+        } catch (err) {
+            console.error(err);
+            setError('Invalid email or password');
+        } finally {
+            setLoading(false);
+        }
+    }; 
     return(
          <Container className="login-container d-flex align-items-center justify-content-center min-vh-100">
             <div className="login-card shadow p-4 rounded bg-white" style={{maxWidth: 400, width: '100%'}}>

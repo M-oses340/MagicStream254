@@ -64,34 +64,33 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 			return
 		}
 		http.SetCookie(c.Writer, &http.Cookie{
-			Name:  "access_token",
-			Value: token,
-			Path:  "/",
-			// Domain:   "localhost",
+			Name:     "access_token",
+			Value:    token,
+			Path:     "/",
 			MaxAge:   86400,
-			Secure:   true,
+			Secure:   false, // LOCALHOST FIX
 			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
+			SameSite: http.SameSiteLaxMode,
 		})
+
 		http.SetCookie(c.Writer, &http.Cookie{
-			Name:  "refresh_token",
-			Value: refreshToken,
-			Path:  "/",
-			// Domain:   "localhost",
-			MaxAge:   604800,
-			Secure:   true,
+			Name:     "refresh_token",
+			Value:    refreshToken,
+			Path:     "/",
+			MaxAge:   86400 * 7,
+			Secure:   false, // LOCALHOST FIX
 			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
+			SameSite: http.SameSiteLaxMode,
 		})
 
 		c.JSON(http.StatusOK, models.UserResponse{
-			UserId:    foundUser.UserID,
-			FirstName: foundUser.FirstName,
-			LastName:  foundUser.LastName,
-			Email:     foundUser.Email,
-			Role:      foundUser.Role,
-			//Token:           token,
-			//RefreshToken:    refreshToken,
+			UserId:          foundUser.UserID,
+			FirstName:       foundUser.FirstName,
+			LastName:        foundUser.LastName,
+			Email:           foundUser.Email,
+			Role:            foundUser.Role,
+			Token:           token,
+			RefreshToken:    refreshToken,
 			FavouriteGenres: foundUser.FavouriteGenres,
 		})
 
