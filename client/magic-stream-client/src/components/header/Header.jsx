@@ -7,19 +7,12 @@ import {useState} from 'react'
 
 const Header = () => {
     const navigate = useNavigate();
-    const {auth} = useAuth();
+    const [auth,setAuth] = useState(false);
 
     return(
         <Navbar bg="dark" variant='dark' expand="lg" sticky="top" className="shadow-sm" >
             <Container>
                 <Navbar.Brand>
-                    <img
-                        alt=""
-                        src={logo}
-                        width="30"
-                        height="30"
-                        className="d-inline-block align-top me-2"
-                    />
                     Magic Stream
                 </Navbar.Brand>
                 <Navbar.Toggle aria-controls="main-navbar-nav" />
