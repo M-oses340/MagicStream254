@@ -2,7 +2,7 @@ import { useState, useEffect} from 'react';
 import Container from 'react-bootstrap/Container';
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
-import axiosClient from '../../api/axiosConfig';
+import axiosClient from '../../api/axios.Config';
 import { useNavigate, Link } from 'react-router-dom';
 
 const Register = () => {
