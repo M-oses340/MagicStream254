@@ -3,6 +3,7 @@ import Container from 'react-bootstrap/Container'
 import Navbar from 'react-bootstrap/Navbar'
 import Nav from 'react-bootstrap/Nav'
 import {useNavigate, NavLink, Link} from 'react-router-dom'
+import {useState} from 'react'
 
 const Header = () => {
     const navigate = useNavigate();
@@ -68,3 +69,4 @@ const Header = () => {
         
     )
 } 
+export default Header;
