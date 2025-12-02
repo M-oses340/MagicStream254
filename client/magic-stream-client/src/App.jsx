@@ -8,6 +8,7 @@ import './App.css'
 import {Route, Routes, useNavigate} from 'react-router-dom'
 import Layout from "./components/Layout";
 import RequiredAuth from "./components/RequiredAuth";
+import Review from './components/review/Review';
 
 function App() {
   return (
