@@ -3,6 +3,7 @@ import Header from "./components/header/Header";
 import { useState, useEffect } from 'react';
 import Register from "./components/register/Register";
 import Login from "./components/login/Login";
+import Recommended from './components/recommended/Recommended';
 import './App.css'
 import {Route, Routes, useNavigate} from 'react-router-dom'
 import Layout from "./components/Layout";
