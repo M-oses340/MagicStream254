@@ -1,21 +1,32 @@
+import {useState} from 'react'
 import Button from 'react-bootstrap/Button'
 import Container from 'react-bootstrap/Container'
-import Navbar from 'react-bootstrap/Navbar'
 import Nav from 'react-bootstrap/Nav'
+import Navbar from 'react-bootstrap/Navbar'
 import {useNavigate, NavLink, Link} from 'react-router-dom'
-import {useState} from 'react'
+import useAuth from '../../hooks/useAuth';
+import logo from '../../assets/MagicStreamLogo.png';
 
-const Header = () => {
+const Header = ({handleLogout}) => {
     const navigate = useNavigate();
-    const [auth,setAuth] = useState(false);
+    const {auth} = useAuth();
 
-    return(
-        <Navbar bg="dark" variant='dark' expand="lg" sticky="top" className="shadow-sm" >
+
+    return (
+        <Navbar bg="dark" variant='dark' expand="lg" stick="top" className="shadow-sm">
             <Container>
                 <Navbar.Brand>
+                     <img
+                        alt=""
+                        src={logo}
+                        width="30"
+                        height="30"
+                        className="d-inline-block align-top me-2"
+                    />
                     Magic Stream
                 </Navbar.Brand>
-                <Navbar.Toggle aria-controls="main-navbar-nav" />
+
+            <Navbar.Toggle aria-controls="main-navbar-nav" />
                 <Navbar.Collapse>
                     <Nav className ="me-auto">
                         <Nav.Link as = {NavLink} to="/">
@@ -25,6 +36,7 @@ const Header = () => {
                             Recommended
                         </Nav.Link>
                     </Nav>
+    
                     <Nav className ="ms-auto align-items-center">
                         {auth ? (
                         <>
@@ -56,10 +68,8 @@ const Header = () => {
                         )}
                     </Nav>       
                 </Navbar.Collapse>
-
             </Container>
         </Navbar>
-        
     )
-} 
+}
 export default Header;

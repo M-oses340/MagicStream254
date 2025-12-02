@@ -9,6 +9,7 @@ import {Route, Routes, useNavigate} from 'react-router-dom'
 import Layout from "./components/Layout";
 import RequiredAuth from "./components/RequiredAuth";
 import Review from './components/review/Review';
+import StreamMovie from "./components/stream/StreamMovie";
 
 function App() {
   return (
