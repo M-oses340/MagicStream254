@@ -3,7 +3,9 @@ package utils
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/M-oses340/MagicStream254/server/MagicStreamMoviesServer/database"
@@ -13,6 +15,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+// =========================
+// JWT CLAIMS STRUCTURE
+// =========================
 type SignedDetails struct {
 	Email     string `json:"email"`
 	FirstName string `json:"first_name"`
@@ -22,11 +27,23 @@ type SignedDetails struct {
 	jwt.RegisteredClaims
 }
 
-var SECRET_KEY string = os.Getenv("SECRET_KEY")
-var SECRET_REFRESH_KEY string = os.Getenv("SECRET_REFRESH_KEY")
+// Load secrets safely
+var SECRET_KEY = os.Getenv("SECRET_KEY")
+var SECRET_REFRESH_KEY = os.Getenv("SECRET_REFRESH_KEY")
 
+func init() {
+	if SECRET_KEY == "" || SECRET_REFRESH_KEY == "" {
+		fmt.Println("⚠ WARNING: JWT SECRET KEYS ARE NOT SET IN ENVIRONMENT VARIABLES")
+	}
+}
+
+// =========================
+// GENERATE ACCESS + REFRESH TOKENS
+// =========================
 func GenerateAllTokens(email, firstName, lastName, role, userId string) (string, string, error) {
-	accessClaims := &SignedDetails{
+
+	// ACCESS TOKEN
+	accessClaims := SignedDetails{
 		Email:     email,
 		FirstName: firstName,
 		LastName:  lastName,
@@ -35,7 +52,7 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "MagicStream",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)), // 1 day
 		},
 	}
 
@@ -45,7 +62,8 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 		return "", "", err
 	}
 
-	refreshClaims := &SignedDetails{
+	// REFRESH TOKEN
+	refreshClaims := SignedDetails{
 		Email:     email,
 		FirstName: firstName,
 		LastName:  lastName,
@@ -54,7 +72,7 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "MagicStream",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)), // 7 days
 		},
 	}
 
@@ -67,62 +85,75 @@ func GenerateAllTokens(email, firstName, lastName, role, userId string) (string,
 	return signedAccessToken, signedRefreshToken, nil
 }
 
+// =========================
+// UPDATE TOKENS IN MONGODB
+// =========================
 func UpdateAllTokens(userId, token, refreshToken string, client *mongo.Client) error {
 	userCollection := database.OpenCollection("users", client)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
 
-	updateData := bson.M{
-		"$set": bson.M{
-			"token":         token,
-			"refresh_token": refreshToken,
-			"updated_at":    time.Now(),
-		},
-	}
+	update := bson.M{"$set": bson.M{
+		"token":         token,
+		"refresh_token": refreshToken,
+		"updated_at":    time.Now(),
+	}}
 
-	_, err := userCollection.UpdateOne(ctx, bson.M{"user_id": userId}, updateData)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	_, err := userCollection.UpdateOne(ctx, bson.M{"user_id": userId}, update)
+	return err
 }
 
+// =========================
+// EXTRACT 'Authorization: Bearer token'
+// =========================
 func GetAccessToken(c *gin.Context) (string, error) {
-	authHeader := c.Request.Header.Get("Authorization")
+	authHeader := c.GetHeader("Authorization")
+
 	if authHeader == "" {
-		return "", errors.New("Authorization header is empty")
+		return "", errors.New("authorization header missing")
 	}
 
-	tokenString := authHeader[len("Bearer "):]
-	if tokenString == "" {
-		return "", errors.New("Bearer token is required")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return "", errors.New("invalid authorization header format")
 	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == "" {
+		return "", errors.New("empty bearer token")
+	}
+
 	return tokenString, nil
 }
 
+// =========================
+// VALIDATE ACCESS TOKEN
+// =========================
 func ValidateToken(tokenString string) (*SignedDetails, error) {
 	claims := &SignedDetails{}
 
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
 		return []byte(SECRET_KEY), nil
 	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-		return nil, errors.New("unexpected signing method")
+	if !token.Valid {
+		return nil, errors.New("invalid token")
 	}
 
 	if claims.ExpiresAt.Time.Before(time.Now()) {
-		return nil, errors.New("token has expired")
+		return nil, errors.New("access token expired")
 	}
 
 	return claims, nil
 }
 
+// =========================
+// GET ROLE FROM TOKEN
+// =========================
 func GetRoleFromContext(c *gin.Context) (string, error) {
 	tokenString, err := GetAccessToken(c)
 	if err != nil {
@@ -137,6 +168,9 @@ func GetRoleFromContext(c *gin.Context) (string, error) {
 	return claims.Role, nil
 }
 
+// =========================
+// GET USER ID FROM TOKEN
+// =========================
 func GetUserIdFromContext(c *gin.Context) (string, error) {
 	tokenString, err := GetAccessToken(c)
 	if err != nil {
@@ -151,22 +185,26 @@ func GetUserIdFromContext(c *gin.Context) (string, error) {
 	return claims.UserId, nil
 }
 
+// =========================
+// VALIDATE REFRESH TOKEN
+// =========================
 func ValidateRefreshToken(tokenString string) (*SignedDetails, error) {
 	claims := &SignedDetails{}
 
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
 		return []byte(SECRET_REFRESH_KEY), nil
 	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-		return nil, errors.New("unexpected signing method")
+	if !token.Valid {
+		return nil, errors.New("invalid refresh token")
 	}
 
 	if claims.ExpiresAt.Time.Before(time.Now()) {
-		return nil, errors.New("refresh token has expired")
+		return nil, errors.New("refresh token expired")
 	}
 
 	return claims, nil
