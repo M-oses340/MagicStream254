@@ -38,4 +38,4 @@ const Recommended = () => {
     )
 
 }
-export default Recommended
+export default Recommended;

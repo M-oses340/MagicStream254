@@ -36,8 +36,8 @@ const Login = () => {
             
            localStorage.setItem('user', JSON.stringify(response.data));
             // Handle successful login (e.g., store token, redirect)
-           //navigate(from, {replace: true});
-           navigate('/');
+           navigate(from, {replace: true});
+           //navigate('/');
 
         } catch (err) {
             console.error(err);
