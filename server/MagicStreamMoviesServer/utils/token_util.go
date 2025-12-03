@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/M-oses340/MagicStream254/server/MagicStreamMoviesServer/database"
@@ -27,7 +26,7 @@ type SignedDetails struct {
 	jwt.RegisteredClaims
 }
 
-// Load secrets safely
+// Load secrets
 var SECRET_KEY = os.Getenv("SECRET_KEY")
 var SECRET_REFRESH_KEY = os.Getenv("SECRET_REFRESH_KEY")
 
@@ -105,22 +104,13 @@ func UpdateAllTokens(userId, token, refreshToken string, client *mongo.Client) e
 }
 
 // =========================
-// EXTRACT 'Authorization: Bearer token'
+// GET ACCESS TOKEN FROM COOKIE
 // =========================
 func GetAccessToken(c *gin.Context) (string, error) {
-	authHeader := c.GetHeader("Authorization")
 
-	if authHeader == "" {
-		return "", errors.New("authorization header missing")
-	}
-
-	if !strings.HasPrefix(authHeader, "Bearer ") {
-		return "", errors.New("invalid authorization header format")
-	}
-
-	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-	if tokenString == "" {
-		return "", errors.New("empty bearer token")
+	tokenString, err := c.Cookie("access_token")
+	if err != nil {
+		return "", errors.New("missing access_token cookie")
 	}
 
 	return tokenString, nil
@@ -137,11 +127,11 @@ func ValidateToken(tokenString string) (*SignedDetails, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, errors.New("invalid access token")
 	}
 
 	if !token.Valid {
-		return nil, errors.New("invalid token")
+		return nil, errors.New("invalid access token")
 	}
 
 	if claims.ExpiresAt.Time.Before(time.Now()) {
@@ -152,7 +142,7 @@ func ValidateToken(tokenString string) (*SignedDetails, error) {
 }
 
 // =========================
-// GET ROLE FROM TOKEN
+// GET ROLE FROM TOKEN (COOKIE)
 // =========================
 func GetRoleFromContext(c *gin.Context) (string, error) {
 	tokenString, err := GetAccessToken(c)
@@ -169,7 +159,7 @@ func GetRoleFromContext(c *gin.Context) (string, error) {
 }
 
 // =========================
-// GET USER ID FROM TOKEN
+// GET USER ID FROM TOKEN (COOKIE)
 // =========================
 func GetUserIdFromContext(c *gin.Context) (string, error) {
 	tokenString, err := GetAccessToken(c)
@@ -196,7 +186,7 @@ func ValidateRefreshToken(tokenString string) (*SignedDetails, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, errors.New("invalid refresh token")
 	}
 
 	if !token.Valid {
