@@ -316,51 +316,33 @@ func GetRecommendedMovies(client *mongo.Client) gin.HandlerFunc {
 }
 
 func GetUsersFavouriteGenres(userId string, client *mongo.Client, c *gin.Context) ([]string, error) {
-
-	var ctx, cancel = context.WithTimeout(c, 100*time.Second)
+	ctx, cancel := context.WithTimeout(c, 100*time.Second)
 	defer cancel()
 
 	filter := bson.D{{Key: "user_id", Value: userId}}
+	projection := bson.M{"favourite_genres.genre_name": 1, "_id": 0}
 
-	projection := bson.M{
-		"favourite_genres.genre_name": 1,
-		"_id":                         0,
+	var result struct {
+		FavouriteGenres []struct {
+			GenreName string `bson:"genre_name"`
+		} `bson:"favourite_genres"`
 	}
 
-	opts := options.FindOne().SetProjection(projection)
-	var result bson.M
-
-	var userCollection = database.OpenCollection("users", client)
-	err := userCollection.FindOne(ctx, filter, opts).Decode(&result)
-
+	userCollection := database.OpenCollection("users", client)
+	err := userCollection.FindOne(ctx, filter, options.FindOne().SetProjection(projection)).Decode(&result)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return []string{}, nil
 		}
+		return nil, err
 	}
 
-	favGenresArray, ok := result["favourite_genres"].(bson.A)
-
-	if !ok {
-		return []string{}, errors.New("unable to retrieve favourite genres for user")
-	}
-
-	var genreNames []string
-
-	for _, item := range favGenresArray {
-		if genreMap, ok := item.(bson.D); ok {
-			for _, elem := range genreMap {
-				if elem.Key == "genre_name" {
-					if name, ok := elem.Value.(string); ok {
-						genreNames = append(genreNames, name)
-					}
-				}
-			}
-		}
+	genreNames := make([]string, 0, len(result.FavouriteGenres))
+	for _, g := range result.FavouriteGenres {
+		genreNames = append(genreNames, g.GenreName)
 	}
 
 	return genreNames, nil
-
 }
 
 func GetGenres(client *mongo.Client) gin.HandlerFunc {
