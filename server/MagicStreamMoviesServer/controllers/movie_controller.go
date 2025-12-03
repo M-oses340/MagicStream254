@@ -261,33 +261,29 @@ func GetRankings(client *mongo.Client, c *gin.Context) ([]models.Ranking, error)
 func GetRecommendedMovies(client *mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userId, err := utils.GetUserIdFromContext(c)
-
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "User Id not found in context"})
+			return
 		}
 
 		favourite_genres, err := GetUsersFavouriteGenres(userId, client, c)
-
 		if err != nil {
+			log.Println("Error fetching user's favourite genres:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		err = godotenv.Load(".env")
-		if err != nil {
-			log.Println("Warning: .env file not found")
-		}
-		var recommendedMovieLimitVal int64 = 5
 
-		recommendedMovieLimitStr := os.Getenv("RECOMMENDED_MOVIE_LIMIT")
-
-		if recommendedMovieLimitStr != "" {
-			recommendedMovieLimitVal, _ = strconv.ParseInt(recommendedMovieLimitStr, 10, 64)
+		recommendedMovieLimitVal := int64(5)
+		if recommendedMovieLimitStr := os.Getenv("RECOMMENDED_MOVIE_LIMIT"); recommendedMovieLimitStr != "" {
+			if val, err := strconv.ParseInt(recommendedMovieLimitStr, 10, 64); err == nil {
+				recommendedMovieLimitVal = val
+			} else {
+				log.Println("Error parsing RECOMMENDED_MOVIE_LIMIT:", err)
+			}
 		}
 
 		findOptions := options.Find()
-
 		findOptions.SetSort(bson.D{{Key: "ranking.ranking_value", Value: 1}})
-
 		findOptions.SetLimit(recommendedMovieLimitVal)
 
 		filter := bson.D{
@@ -296,25 +292,25 @@ func GetRecommendedMovies(client *mongo.Client) gin.HandlerFunc {
 			}},
 		}
 
-		var ctx, cancel = context.WithTimeout(c, 100*time.Second)
+		ctx, cancel := context.WithTimeout(c, 100*time.Second)
 		defer cancel()
 
-		var movieCollection = database.OpenCollection("movies", client)
-
+		movieCollection := database.OpenCollection("movies", client)
 		cursor, err := movieCollection.Find(ctx, filter, findOptions)
-
 		if err != nil {
+			log.Println("MongoDB Find error:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching recommended movies"})
 			return
 		}
 		defer cursor.Close(ctx)
 
 		var recommendedMovies []models.Movie
-
 		if err := cursor.All(ctx, &recommendedMovies); err != nil {
+			log.Println("Error decoding movies cursor:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
 		c.JSON(http.StatusOK, recommendedMovies)
 	}
 }
