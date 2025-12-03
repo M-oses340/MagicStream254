@@ -106,46 +106,56 @@ func AddMovie(client *mongo.Client) gin.HandlerFunc {
 
 	}
 }
-
 func AdminReviewUpdate(client *mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-
+		// Get role from context
 		role, err := utils.GetRoleFromContext(c)
 		if err != nil {
+			log.Println("Role not found in context:", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Role not found in context"})
 			return
 		}
 
+		log.Println("User role:", role)
+
 		if role != "ADMIN" {
+			log.Println("Unauthorized role:", role)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User must be part of the ADMIN role"})
 			return
 		}
 
+		// Get movie ID from URL
 		movieId := c.Param("imdb_id")
 		if movieId == "" {
+			log.Println("Movie ID not provided")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Movie Id required"})
 			return
 		}
+
+		// Bind request body
 		var req struct {
 			AdminReview string `json:"admin_review"`
 		}
-		var resp struct {
-			RankingName string `json:"ranking_name"`
-			AdminReview string `json:"admin_review"`
-		}
-
-		if err := c.ShouldBind(&req); err != nil {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Println("Error binding JSON:", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 			return
 		}
+
+		log.Println("Received admin review for movie:", movieId, "Review:", req.AdminReview)
+
+		// Get sentiment & ranking
 		sentiment, rankVal, err := GetReviewRanking(req.AdminReview, client, c)
 		if err != nil {
+			log.Println("GetReviewRanking error:", err, "Input:", req.AdminReview)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting review ranking"})
 			return
 		}
 
-		filter := bson.D{{Key: "imdb_id", Value: movieId}}
+		log.Println("Sentiment:", sentiment, "Ranking value:", rankVal)
 
+		// Prepare MongoDB update
+		filter := bson.D{{Key: "imdb_id", Value: movieId}}
 		update := bson.M{
 			"$set": bson.M{
 				"admin_review": req.AdminReview,
@@ -155,27 +165,39 @@ func AdminReviewUpdate(client *mongo.Client) gin.HandlerFunc {
 				},
 			},
 		}
+
 		var ctx, cancel = context.WithTimeout(c, 100*time.Second)
 		defer cancel()
 
-		var movieCollection = database.OpenCollection("movies", client)
+		movieCollection := database.OpenCollection("movies", client)
+		if movieCollection == nil {
+			log.Println("Movie collection is nil")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Movie collection not found"})
+			return
+		}
+
+		log.Println("Updating movie in MongoDB:", movieId, "with update:", update)
 
 		result, err := movieCollection.UpdateOne(ctx, filter, update)
-
 		if err != nil {
+			log.Println("MongoDB UpdateOne error:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating movie"})
 			return
 		}
 
 		if result.MatchedCount == 0 {
+			log.Println("No movie matched for update with ID:", movieId)
 			c.JSON(http.StatusNotFound, gin.H{"error": "Movie not found"})
 			return
 		}
-		resp.RankingName = sentiment
-		resp.AdminReview = req.AdminReview
 
-		c.JSON(http.StatusOK, resp)
+		log.Println("Movie updated successfully. MatchedCount:", result.MatchedCount, "ModifiedCount:", result.ModifiedCount)
 
+		// Respond with updated data
+		c.JSON(http.StatusOK, gin.H{
+			"ranking_name": sentiment,
+			"admin_review": req.AdminReview,
+		})
 	}
 }
 
