@@ -31,129 +31,215 @@ func RegisterUser(client *mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var user models.User
 
+		// Validate incoming JSON
 		if err := c.ShouldBindJSON(&user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data"})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  "fail",
+				"error":   true,
+				"message": "Invalid input data",
+				"content": gin.H{},
+			})
 			return
 		}
+
 		validate := validator.New()
-
 		if err := validate.Struct(user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Validation failed", "details": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  "fail",
+				"error":   true,
+				"message": "Validation failed",
+				"content": gin.H{
+					"details": err.Error(),
+				},
+			})
 			return
 		}
 
+		// Hash password
 		hashedPassword, err := HashPassword(user.Password)
-
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to hash password"})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  "error",
+				"error":   true,
+				"message": "Unable to hash password",
+				"content": gin.H{},
+			})
 			return
 		}
 
-		var ctx, cancel = context.WithTimeout(c, 100*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		var userCollection *mongo.Collection = database.OpenCollection("users", client)
+		userCollection := database.OpenCollection("users", client)
 
-		count, err := userCollection.CountDocuments(ctx, bson.D{{Key: "email", Value: user.Email}})
-
+		// Check if email exists
+		count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check existing user"})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  "error",
+				"error":   true,
+				"message": "Failed to check existing user",
+				"content": gin.H{},
+			})
 			return
 		}
+
 		if count > 0 {
-			c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
+			c.JSON(http.StatusConflict, gin.H{
+				"status":  "fail",
+				"error":   true,
+				"message": "User already exists",
+				"content": gin.H{},
+			})
 			return
 		}
+
+		// Create user object
 		user.UserID = primitive.NewObjectID().Hex()
 		user.CreatedAt = time.Now()
 		user.UpdatedAt = time.Now()
 		user.Password = hashedPassword
+		user.Token = ""
+		user.RefreshToken = ""
 
-		result, err := userCollection.InsertOne(ctx, user)
-
+		// Save user
+		_, err = userCollection.InsertOne(ctx, user)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  "error",
+				"error":   true,
+				"message": "Failed to create user",
+				"content": gin.H{},
+			})
 			return
 		}
 
-		c.JSON(http.StatusCreated, result)
-
+		// SUCCESS RESPONSE (your exact style)
+		c.JSON(http.StatusCreated, gin.H{
+			"status":  "success",
+			"error":   false,
+			"message": "User created successfully",
+			"content": gin.H{
+				"userId":         user.UserID,
+				"firstName":      user.FirstName,
+				"lastName":       user.LastName,
+				"email":          user.Email,
+				"role":           user.Role,
+				"token":          nil,
+				"refreshToken":   nil,
+				"favoriteGenres": []interface{}{},
+			},
+		})
 	}
-
 }
 
 func LoginUser(client *mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var userLogin models.UserLogin
 
+		// Validate JSON
 		if err := c.ShouldBindJSON(&userLogin); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalide input data"})
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Status:    "error",
+				Message:   "Invalid input data",
+				Errors:    err.Error(),
+				Timestamp: time.Now(),
+			})
 			return
 		}
 
 		var ctx, cancel = context.WithTimeout(c, 100*time.Second)
 		defer cancel()
 
-		var userCollection *mongo.Collection = database.OpenCollection("users", client)
+		userCollection := database.OpenCollection("users", client)
 
 		var foundUser models.User
 		err := userCollection.FindOne(ctx, bson.D{{Key: "email", Value: userLogin.Email}}).Decode(&foundUser)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
+			c.JSON(http.StatusUnauthorized, models.APIResponse{
+				Status:    "error",
+				Message:   "Invalid email or password",
+				Timestamp: time.Now(),
+			})
 			return
 		}
 
+		// Compare hashed password
 		err = bcrypt.CompareHashAndPassword([]byte(foundUser.Password), []byte(userLogin.Password))
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
+			c.JSON(http.StatusUnauthorized, models.APIResponse{
+				Status:    "error",
+				Message:   "Invalid email or password",
+				Timestamp: time.Now(),
+			})
 			return
 		}
 
-		token, refreshToken, err := utils.GenerateAllTokens(foundUser.Email, foundUser.FirstName, foundUser.LastName, foundUser.Role, foundUser.UserID)
+		// Generate tokens
+		token, refreshToken, err := utils.GenerateAllTokens(
+			foundUser.Email,
+			foundUser.FirstName,
+			foundUser.LastName,
+			foundUser.Role,
+			foundUser.UserID,
+		)
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Status:    "error",
+				Message:   "Failed to generate tokens",
+				Errors:    err.Error(),
+				Timestamp: time.Now(),
+			})
 			return
 		}
 
+		// Update tokens in database
 		err = utils.UpdateAllTokens(foundUser.UserID, token, refreshToken, client)
-
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update tokens"})
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Status:    "error",
+				Message:   "Failed to update tokens",
+				Errors:    err.Error(),
+				Timestamp: time.Now(),
+			})
 			return
 		}
+
+		// Set cookies
 		http.SetCookie(c.Writer, &http.Cookie{
-			Name:  "access_token",
-			Value: token,
-			Path:  "/",
-			// Domain:   "localhost",
+			Name:     "access_token",
+			Value:    token,
+			Path:     "/",
 			MaxAge:   86400,
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteNoneMode,
 		})
 		http.SetCookie(c.Writer, &http.Cookie{
-			Name:  "refresh_token",
-			Value: refreshToken,
-			Path:  "/",
-			// Domain:   "localhost",
+			Name:     "refresh_token",
+			Value:    refreshToken,
+			Path:     "/",
 			MaxAge:   604800,
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteNoneMode,
 		})
 
-		c.JSON(http.StatusOK, models.UserResponse{
-			UserId:    foundUser.UserID,
-			FirstName: foundUser.FirstName,
-			LastName:  foundUser.LastName,
-			Email:     foundUser.Email,
-			Role:      foundUser.Role,
-			//Token:           token,
-			//RefreshToken:    refreshToken,
-			FavouriteGenres: foundUser.FavouriteGenres,
+		// SUCCESS RESPONSE — wrapped in APIResponse
+		c.JSON(http.StatusOK, models.APIResponse{
+			Status:  "success",
+			Message: "Login successful",
+			Data: models.UserResponse{
+				UserId:          foundUser.UserID,
+				FirstName:       foundUser.FirstName,
+				LastName:        foundUser.LastName,
+				Email:           foundUser.Email,
+				Role:            foundUser.Role,
+				FavouriteGenres: foundUser.FavouriteGenres,
+			},
+			Timestamp: time.Now(),
 		})
-
 	}
 }
 
