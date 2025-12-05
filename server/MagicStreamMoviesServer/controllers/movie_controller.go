@@ -366,27 +366,42 @@ func GetUsersFavouriteGenres(userId string, client *mongo.Client, c *gin.Context
 
 	return genreNames, nil
 }
-
 func GetGenres(client *mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var ctx, cancel = context.WithTimeout(c, 100*time.Second)
+		ctx, cancel := context.WithTimeout(c, 100*time.Second)
 		defer cancel()
 
-		var genreCollection = database.OpenCollection("genres", client)
+		genreCollection := database.OpenCollection("genres", client)
 
 		cursor, err := genreCollection.Find(ctx, bson.D{})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching movie genres"})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  "fail",
+				"error":   true,
+				"message": "Error fetching movie genres",
+				"content": gin.H{},
+			})
 			return
 		}
 		defer cursor.Close(ctx)
 
 		var genres []models.Genre
 		if err := cursor.All(ctx, &genres); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  "fail",
+				"error":   true,
+				"message": err.Error(),
+				"content": gin.H{},
+			})
 			return
 		}
-		c.JSON(http.StatusOK, genres)
 
+		// Respond with content array
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "success",
+			"error":   false,
+			"message": "Genres fetched successfully",
+			"content": genres,
+		})
 	}
 }

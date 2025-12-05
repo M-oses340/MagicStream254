@@ -1,9 +1,9 @@
-import { useState, useEffect} from 'react';
+import { useState, useEffect } from 'react';
 import Container from 'react-bootstrap/Container';
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
 import axiosClient from '../../api/axios.Config';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import logo from '../../assets/MagicStreamLogo.png';
 
 const Register = () => {
@@ -22,16 +22,15 @@ const Register = () => {
     const handleGenreChange = (e) => {
         const options = Array.from(e.target.selectedOptions);
         setFavouriteGenres(options.map(opt => ({
-            genre_id: Number(opt.value),
-            genre_name: opt.label
+            genreId: Number(opt.value),
+            genreName: opt.label
         })));
     };
-   const handleSubmit = async (e) => {
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setError(null);
-        const defaultRole ="USER";
-
-        console.log(defaultRole);
+        const defaultRole = "USER";
 
         if (password !== confirmPassword) {
             setError('Passwords do not match.');
@@ -42,18 +41,24 @@ const Register = () => {
 
         try {
             const payload = {
-                first_name: firstName,
-                last_name: lastName,
-                email,
-                password,
-                role: defaultRole,
-                favourite_genres: favouriteGenres
-            };
+                              firstName: firstName,
+                              lastName: lastName,
+                              email: email,
+                              password: password,
+                              role: defaultRole,
+                              favoriteGenres: favouriteGenres // note camelCase
+                            };
+            
+    
+
+
             const response = await axiosClient.post('/register', payload);
+
             if (response.data.error) {
-                setError(response.data.error);
+                setError(response.data.message || 'Registration failed.');
                 return;
             }
+
             // Registration successful, redirect to login
             navigate('/login', { replace: true });
         } catch (err) {
@@ -63,34 +68,31 @@ const Register = () => {
         }
     };
 
-
     useEffect(() => {
         const fetchGenres = async () => {
-        try {
-            const response = await axiosClient.get('/genres');
-            setGenres(response.data);
-        } catch (error) {
-            console.error('Error fetching movie genres:', error);
-        }
+            try {
+                const response = await axiosClient.get('/genres');
+                // Extract content array from API response
+                setGenres(response.data.content || []);
+            } catch (error) {
+                console.error('Error fetching movie genres:', error);
+            }
         };
-    
+
         fetchGenres();
     }, []);
 
-
     return (
-
-
-       <Container className="login-container d-flex align-items-center justify-content-center min-vh-100">
-        <div className="login-card shadow p-4 rounded bg-white" style={{maxWidth: 400, width: '100%'}}>
+        <Container className="login-container d-flex align-items-center justify-content-center min-vh-100">
+            <div className="login-card shadow p-4 rounded bg-white" style={{ maxWidth: 400, width: '100%' }}>
                 <div className="text-center mb-4">
-                     <img src={logo} alt="Logo" width={60} className="mb-2" />
+                    <img src={logo} alt="Logo" width={60} className="mb-2" />
                     <h2 className="fw-bold">Register</h2>
                     <p className="text-muted">Create your Magic Movie Stream account.</p>
-                    {error && <div className="alert alert-danger py-2">{error}</div>}                
+                    {error && <div className="alert alert-danger py-2">{error}</div>}
                 </div>
-             <Form onSubmit={handleSubmit}>
-                     <Form.Group className="mb-3">
+                <Form onSubmit={handleSubmit}>
+                    <Form.Group className="mb-3">
                         <Form.Label>First Name</Form.Label>
                         <Form.Control
                             type="text"
@@ -100,7 +102,8 @@ const Register = () => {
                             required
                         />
                     </Form.Group>
-                     <Form.Group className="mb-3">
+
+                    <Form.Group className="mb-3">
                         <Form.Label>Last Name</Form.Label>
                         <Form.Control
                             type="text"
@@ -110,7 +113,8 @@ const Register = () => {
                             required
                         />
                     </Form.Group>
-                     <Form.Group className="mb-3">
+
+                    <Form.Group className="mb-3">
                         <Form.Label>Email</Form.Label>
                         <Form.Control
                             type="email"
@@ -120,7 +124,8 @@ const Register = () => {
                             required
                         />
                     </Form.Group>
-                     <Form.Group className="mb-3">
+
+                    <Form.Group className="mb-3">
                         <Form.Label>Password</Form.Label>
                         <Form.Control
                             type="password"
@@ -130,7 +135,8 @@ const Register = () => {
                             required
                         />
                     </Form.Group>
-                     <Form.Group className="mb-3">
+
+                    <Form.Group className="mb-3">
                         <Form.Label>Confirm Password</Form.Label>
                         <Form.Control
                             type="password"
@@ -138,22 +144,23 @@ const Register = () => {
                             value={confirmPassword}
                             onChange={e => setConfirmPassword(e.target.value)}
                             required
-                            isInvalid ={!!confirmPassword && password !== confirmPassword}
-
+                            isInvalid={!!confirmPassword && password !== confirmPassword}
                         />
                         <Form.Control.Feedback type="invalid">
                             Passwords do not match.
                         </Form.Control.Feedback>
                     </Form.Group>
-                    <Form.Group>
+
+                    <Form.Group className="mb-3">
+                        <Form.Label>Favorite Genres</Form.Label>
                         <Form.Select
                             multiple
-                            value={favouriteGenres.map(g => String(g.genre_id))}
+                            value={favouriteGenres.map(g => String(g.genreId))}
                             onChange={handleGenreChange}
                         >
-                            {genres.map(genre => (
-                                <option key={genre.genre_id} value={genre.genre_id} label={genre.genre_name}>
-                                    {genre.genre_name}
+                            {Array.isArray(genres) && genres.map(genre => (
+                                <option key={genre.genreId} value={genre.genreId} label={genre.genreName}>
+                                    {genre.genreName}
                                 </option>
                             ))}
                         </Form.Select>
@@ -161,12 +168,13 @@ const Register = () => {
                             Hold Ctrl (Windows) or Cmd (Mac) to select multiple genres.
                         </Form.Text>
                     </Form.Group>
-                     <Button
+
+                    <Button
                         variant="primary"
                         type="submit"
                         className="w-100 mb-2"
                         disabled={loading}
-                        style={{fontWeight: 600, letterSpacing: 1}}
+                        style={{ fontWeight: 600, letterSpacing: 1 }}
                     >
                         {loading ? (
                             <>
@@ -174,11 +182,11 @@ const Register = () => {
                                 Registering...
                             </>
                         ) : 'Register'}
-                    </Button>                        
-            </Form>
-            </div>           
-       </Container>
+                    </Button>
+                </Form>
+            </div>
+        </Container>
+    );
+};
 
-    )
-}
 export default Register;

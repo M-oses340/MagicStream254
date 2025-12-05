@@ -26,31 +26,43 @@ func HashPassword(password string) (string, error) {
 	return string(HashPassword), nil
 
 }
-
 func RegisterUser(client *mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var user models.User
 
-		// Validate incoming JSON
+		// Bind JSON
 		if err := c.ShouldBindJSON(&user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"status":  "fail",
-				"error":   true,
-				"message": "Invalid input data",
-				"content": gin.H{},
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Status:    "fail",
+				Error:     true,
+				Message:   "Invalid input data",
+				Content:   gin.H{"details": err.Error()},
+				Timestamp: time.Now(),
 			})
 			return
 		}
 
+		// Validate required fields
 		validate := validator.New()
 		if err := validate.Struct(user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"status":  "fail",
-				"error":   true,
-				"message": "Validation failed",
-				"content": gin.H{
-					"details": err.Error(),
-				},
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Status:    "fail",
+				Error:     true,
+				Message:   "Validation failed",
+				Content:   gin.H{"details": err.Error()},
+				Timestamp: time.Now(),
+			})
+			return
+		}
+
+		// Ensure at least one genre is selected
+		if len(user.FavouriteGenres) == 0 {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Status:    "fail",
+				Error:     true,
+				Message:   "At least one genre must be selected",
+				Content:   gin.H{},
+				Timestamp: time.Now(),
 			})
 			return
 		}
@@ -58,11 +70,12 @@ func RegisterUser(client *mongo.Client) gin.HandlerFunc {
 		// Hash password
 		hashedPassword, err := HashPassword(user.Password)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status":  "error",
-				"error":   true,
-				"message": "Unable to hash password",
-				"content": gin.H{},
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Status:    "error",
+				Error:     true,
+				Message:   "Unable to hash password",
+				Content:   gin.H{},
+				Timestamp: time.Now(),
 			})
 			return
 		}
@@ -75,21 +88,23 @@ func RegisterUser(client *mongo.Client) gin.HandlerFunc {
 		// Check if email exists
 		count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status":  "error",
-				"error":   true,
-				"message": "Failed to check existing user",
-				"content": gin.H{},
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Status:    "error",
+				Error:     true,
+				Message:   "Failed to check existing user",
+				Content:   gin.H{},
+				Timestamp: time.Now(),
 			})
 			return
 		}
 
 		if count > 0 {
-			c.JSON(http.StatusConflict, gin.H{
-				"status":  "fail",
-				"error":   true,
-				"message": "User already exists",
-				"content": gin.H{},
+			c.JSON(http.StatusConflict, models.APIResponse{
+				Status:    "fail",
+				Error:     true,
+				Message:   "User already exists",
+				Content:   gin.H{},
+				Timestamp: time.Now(),
 			})
 			return
 		}
@@ -105,33 +120,38 @@ func RegisterUser(client *mongo.Client) gin.HandlerFunc {
 		// Save user
 		_, err = userCollection.InsertOne(ctx, user)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status":  "error",
-				"error":   true,
-				"message": "Failed to create user",
-				"content": gin.H{},
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Status:    "error",
+				Error:     true,
+				Message:   "Failed to create user",
+				Content:   gin.H{},
+				Timestamp: time.Now(),
 			})
 			return
 		}
 
-		// SUCCESS RESPONSE (your exact style)
-		c.JSON(http.StatusCreated, gin.H{
-			"status":  "success",
-			"error":   false,
-			"message": "User created successfully",
-			"content": gin.H{
-				"userId":         user.UserID,
-				"firstName":      user.FirstName,
-				"lastName":       user.LastName,
-				"email":          user.Email,
-				"role":           user.Role,
-				"token":          nil,
-				"refreshToken":   nil,
-				"favoriteGenres": []interface{}{},
-			},
+		// Return standardized response
+		userContent := models.UserContent{
+			UserID:         user.UserID,
+			FirstName:      user.FirstName,
+			LastName:       user.LastName,
+			Email:          user.Email,
+			Role:           user.Role,
+			Token:          nil,
+			RefreshToken:   nil,
+			FavoriteGenres: user.FavouriteGenres,
+		}
+
+		c.JSON(http.StatusCreated, models.APIResponse{
+			Status:    "success",
+			Error:     false,
+			Message:   "User created successfully",
+			Content:   userContent,
+			Timestamp: time.Now(),
 		})
 	}
 }
+
 func LoginUser(client *mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var userLogin models.UserLogin
