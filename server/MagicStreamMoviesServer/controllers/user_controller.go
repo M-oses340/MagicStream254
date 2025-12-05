@@ -132,7 +132,6 @@ func RegisterUser(client *mongo.Client) gin.HandlerFunc {
 		})
 	}
 }
-
 func LoginUser(client *mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var userLogin models.UserLogin
@@ -140,15 +139,15 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 		// Validate JSON
 		if err := c.ShouldBindJSON(&userLogin); err != nil {
 			c.JSON(http.StatusBadRequest, models.APIResponse{
-				Status:    "error",
-				Message:   "Invalid input data",
-				Errors:    err.Error(),
-				Timestamp: time.Now(),
+				Status:  "error",
+				Error:   true,
+				Message: "Invalid input data",
+				Content: err.Error(),
 			})
 			return
 		}
 
-		var ctx, cancel = context.WithTimeout(c, 100*time.Second)
+		ctx, cancel := context.WithTimeout(c, 100*time.Second)
 		defer cancel()
 
 		userCollection := database.OpenCollection("users", client)
@@ -157,9 +156,9 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 		err := userCollection.FindOne(ctx, bson.D{{Key: "email", Value: userLogin.Email}}).Decode(&foundUser)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, models.APIResponse{
-				Status:    "error",
-				Message:   "Invalid email or password",
-				Timestamp: time.Now(),
+				Status:  "error",
+				Error:   true,
+				Message: "Invalid email or password",
 			})
 			return
 		}
@@ -168,9 +167,9 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 		err = bcrypt.CompareHashAndPassword([]byte(foundUser.Password), []byte(userLogin.Password))
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, models.APIResponse{
-				Status:    "error",
-				Message:   "Invalid email or password",
-				Timestamp: time.Now(),
+				Status:  "error",
+				Error:   true,
+				Message: "Invalid email or password",
 			})
 			return
 		}
@@ -183,13 +182,12 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 			foundUser.Role,
 			foundUser.UserID,
 		)
-
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Status:    "error",
-				Message:   "Failed to generate tokens",
-				Errors:    err.Error(),
-				Timestamp: time.Now(),
+				Status:  "error",
+				Error:   true,
+				Message: "Failed to generate tokens",
+				Content: err.Error(),
 			})
 			return
 		}
@@ -198,10 +196,10 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 		err = utils.UpdateAllTokens(foundUser.UserID, token, refreshToken, client)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Status:    "error",
-				Message:   "Failed to update tokens",
-				Errors:    err.Error(),
-				Timestamp: time.Now(),
+				Status:  "error",
+				Error:   true,
+				Message: "Failed to update tokens",
+				Content: err.Error(),
 			})
 			return
 		}
@@ -226,19 +224,24 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 			SameSite: http.SameSiteNoneMode,
 		})
 
-		// SUCCESS RESPONSE — wrapped in APIResponse
+		// Prepare user content
+		userContent := models.UserContent{
+			UserID:         foundUser.UserID,
+			FirstName:      foundUser.FirstName,
+			LastName:       foundUser.LastName,
+			Email:          foundUser.Email,
+			Role:           foundUser.Role,
+			Token:          &token,
+			RefreshToken:   &refreshToken,
+			FavoriteGenres: foundUser.FavouriteGenres,
+		}
+
+		// Send standardized response
 		c.JSON(http.StatusOK, models.APIResponse{
 			Status:  "success",
+			Error:   false,
 			Message: "Login successful",
-			Data: models.UserResponse{
-				UserId:          foundUser.UserID,
-				FirstName:       foundUser.FirstName,
-				LastName:        foundUser.LastName,
-				Email:           foundUser.Email,
-				Role:            foundUser.Role,
-				FavouriteGenres: foundUser.FavouriteGenres,
-			},
-			Timestamp: time.Now(),
+			Content: userContent,
 		})
 	}
 }
