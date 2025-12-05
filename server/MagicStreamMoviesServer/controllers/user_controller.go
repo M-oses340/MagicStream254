@@ -136,13 +136,14 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var userLogin models.UserLogin
 
-		// Validate JSON
+		// Validate input JSON
 		if err := c.ShouldBindJSON(&userLogin); err != nil {
 			c.JSON(http.StatusBadRequest, models.APIResponse{
-				Status:  "error",
-				Error:   true,
-				Message: "Invalid input data",
-				Content: err.Error(),
+				Status:    "error",
+				Error:     true,
+				Message:   "Invalid input data",
+				Content:   err.Error(),
+				Timestamp: time.Now(),
 			})
 			return
 		}
@@ -152,29 +153,31 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 
 		userCollection := database.OpenCollection("users", client)
 
+		// Find user by email
 		var foundUser models.User
 		err := userCollection.FindOne(ctx, bson.D{{Key: "email", Value: userLogin.Email}}).Decode(&foundUser)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, models.APIResponse{
-				Status:  "error",
-				Error:   true,
-				Message: "Invalid email or password",
+				Status:    "error",
+				Error:     true,
+				Message:   "Invalid email or password",
+				Timestamp: time.Now(),
 			})
 			return
 		}
 
-		// Compare hashed password
-		err = bcrypt.CompareHashAndPassword([]byte(foundUser.Password), []byte(userLogin.Password))
-		if err != nil {
+		// Compare password
+		if err := bcrypt.CompareHashAndPassword([]byte(foundUser.Password), []byte(userLogin.Password)); err != nil {
 			c.JSON(http.StatusUnauthorized, models.APIResponse{
-				Status:  "error",
-				Error:   true,
-				Message: "Invalid email or password",
+				Status:    "error",
+				Error:     true,
+				Message:   "Invalid email or password",
+				Timestamp: time.Now(),
 			})
 			return
 		}
 
-		// Generate tokens
+		// Generate JWT tokens
 		token, refreshToken, err := utils.GenerateAllTokens(
 			foundUser.Email,
 			foundUser.FirstName,
@@ -184,32 +187,33 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Status:  "error",
-				Error:   true,
-				Message: "Failed to generate tokens",
-				Content: err.Error(),
+				Status:    "error",
+				Error:     true,
+				Message:   "Failed to generate tokens",
+				Content:   err.Error(),
+				Timestamp: time.Now(),
 			})
 			return
 		}
 
-		// Update tokens in database
-		err = utils.UpdateAllTokens(foundUser.UserID, token, refreshToken, client)
-		if err != nil {
+		// Update tokens in DB
+		if err := utils.UpdateAllTokens(foundUser.UserID, token, refreshToken, client); err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Status:  "error",
-				Error:   true,
-				Message: "Failed to update tokens",
-				Content: err.Error(),
+				Status:    "error",
+				Error:     true,
+				Message:   "Failed to update tokens",
+				Content:   err.Error(),
+				Timestamp: time.Now(),
 			})
 			return
 		}
 
-		// Set cookies
+		// Set tokens as HttpOnly cookies (not in JSON)
 		http.SetCookie(c.Writer, &http.Cookie{
 			Name:     "access_token",
 			Value:    token,
 			Path:     "/",
-			MaxAge:   86400,
+			MaxAge:   86400, // 1 day
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteNoneMode,
@@ -218,30 +222,31 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 			Name:     "refresh_token",
 			Value:    refreshToken,
 			Path:     "/",
-			MaxAge:   604800,
+			MaxAge:   604800, // 7 days
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteNoneMode,
 		})
 
-		// Prepare user content
+		// Prepare user content (tokens null in JSON)
 		userContent := models.UserContent{
 			UserID:         foundUser.UserID,
 			FirstName:      foundUser.FirstName,
 			LastName:       foundUser.LastName,
 			Email:          foundUser.Email,
 			Role:           foundUser.Role,
-			Token:          &token,
-			RefreshToken:   &refreshToken,
+			Token:          nil, // tokens sent via cookies
+			RefreshToken:   nil,
 			FavoriteGenres: foundUser.FavouriteGenres,
 		}
 
-		// Send standardized response
+		// Send standardized JSON response
 		c.JSON(http.StatusOK, models.APIResponse{
-			Status:  "success",
-			Error:   false,
-			Message: "Login successful",
-			Content: userContent,
+			Status:    "success",
+			Error:     false,
+			Message:   "Login successful",
+			Content:   userContent,
+			Timestamp: time.Now(),
 		})
 	}
 }
